@@ -64,7 +64,7 @@ def remove_cleanup_templates(text):
 
 def log_edit(title):
     site = pywikibot.Site()
-    log_page = pywikibot.Page(site, "User:AsteraBot/Bot log")
+    log_page = pywikibot.Page(site, "User:AsteraBot/log")
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     log_entry = f"* [[{title}]] – replaced bare URLs – {timestamp}\n"
 
