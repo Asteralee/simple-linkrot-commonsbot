@@ -1,0 +1,30 @@
+name: Run TestWiki Bot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * 4'  # Every Thursday at 12:00 UTC
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pywikibot requests beautifulsoup4 mwparserfromhell
+
+      - name: Set up Pywikibot password config
+        run: |
+          mkdir -p ~/.pywikibot
+          echo '("wikipedia", "test", "${{ secrets.WIKI_USERNAME }}", "${{ secrets.WIKI_PASSWORD }}")' > ~/.pywikibot/user-password.py
+
+      - name: Run the bot
+        run: python bot.py
