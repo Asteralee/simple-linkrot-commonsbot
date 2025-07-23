@@ -6,14 +6,21 @@ from bs4 import BeautifulSoup
 import mwparserfromhell
 from pywikibot.exceptions import OtherPageSaveError
 
-# ====================
+# =========================
+# Config
+# =========================
+
+# Set to False later
+TEST_MODE = True
+TEST_PAGES = ["User:AsteraBot/sandbox"]  
+
+# =========================
 # Utility Functions
-# ====================
+# =========================
 
 def fetch_title(url):
-    """Get the <title> from the webpage at the given URL."""
     try:
-        headers = {'User-Agent': 'TestWikiBot/1.0 (https://test.wikipedia.org)'}
+        headers = {'User-Agent': 'TestWikiBot/1.0'}
         response = requests.get(url, timeout=10, headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
         return soup.title.string.strip() if soup.title else "No title"
@@ -21,12 +28,18 @@ def fetch_title(url):
         print(f"Could not fetch title for {url}: {e}")
         return "No title"
 
+def detect_cite_template(url):
+    """Return 'cite news' if the domain looks newsy, otherwise 'cite web'."""
+    news_domains = ["nytimes", "bbc", "cnn", "reuters", "apnews", "nbcnews", "washingtonpost", "foxnews", "theguardian"]
+    for domain in news_domains:
+        if domain in url:
+            return "cite news"
+    return "cite web"
+
 def replace_bare_urls(text):
-    """Replace bare URLs (including in <ref>) with cite web templates."""
     updated = text
     seen = set()
 
-    # Match bare URLs, possibly inside <ref>...</ref>
     pattern = re.compile(r'(<ref[^>]*>)?\s*(https?://[^\s\[\]<>"]+)\s*(</ref>)?', re.IGNORECASE)
 
     def replacer(match):
@@ -39,20 +52,19 @@ def replace_bare_urls(text):
         seen.add(url)
 
         title = fetch_title(url)
-        cite = f"{{{{cite web |url={url} |title={title} |access-date={datetime.utcnow().date()}}}}}"
+        template = detect_cite_template(url)
+        cite = f"{{{{{template} |url={url} |title={title} |access-date={datetime.utcnow().date()}}}}}"
         return f"{pre}{cite}{post}"
 
     updated = re.sub(pattern, replacer, updated)
     return updated
 
 def remove_cleanup_templates(text):
-    """Remove {{Cleanup bare URLs}} template (and similar)."""
     return re.sub(r'\{\{\s*Cleanup bare URLs[^}]*\}\}', '', text, flags=re.IGNORECASE)
 
 def log_edit(title):
-    """Append a log entry to the user's bot log subpage."""
     site = pywikibot.Site()
-    log_page = pywikibot.Page(site, "User:Chi/Bot log")  # Adjust if needed
+    log_page = pywikibot.Page(site, "User:AsteraBot/Bot log")
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     log_entry = f"* [[{title}]] – replaced bare URLs – {timestamp}\n"
 
@@ -64,17 +76,16 @@ def log_edit(title):
     log_page.text = current_text + log_entry
     log_page.save(summary=f"Bot log: added entry for [[{title}]]")
 
-# ====================
-# Main Processing Logic
-# ====================
+# =========================
+# Page Processing
+# =========================
 
 def process_page(title):
-    """Fix one page if it exists and has bare URLs."""
     site = pywikibot.Site()
     page = pywikibot.Page(site, title)
 
     if not page.exists():
-        print(f"Page {title} does not exist.")
+        print(f"❌ Page {title} does not exist.")
         return
 
     original_text = page.text
@@ -84,7 +95,7 @@ def process_page(title):
     if original_text != updated_text:
         page.text = updated_text
         try:
-            page.save(summary="Bot: Replaced bare URLs with cite web templates and removed cleanup template")
+            page.save(summary="Bot: Replaced bare URLs with citation templates and removed cleanup template")
             print(f"✅ Edited page: {title}")
             log_edit(title)
         except OtherPageSaveError as e:
@@ -92,22 +103,22 @@ def process_page(title):
     else:
         print(f"ℹ️ No changes made to: {title}")
 
-def get_pages_from_category(cat_title):
-    """Get all pages in a given category."""
-    site = pywikibot.Site()
-    category = pywikibot.Category(site, cat_title)
-    return list(category.articles(namespaces=[0]))  # Mainspace only
+# =========================
+# Main Bot Runner
+# =========================
 
-# ====================
-# Run the Bot
-# ====================
-
-if __name__ == "__main__":
-    category_name = "Category:All articles with bare URLs for citations"
-    pages = get_pages_from_category(category_name)
-
-    if not pages:
-        print("No pages found in the category.")
+def main():
+    if TEST_MODE:
+        print("Running in TEST MODE with hardcoded pages...")
+        for title in TEST_PAGES:
+            process_page(title)
     else:
+        category = "Category:All articles with bare URLs for citations"
+        site = pywikibot.Site()
+        cat = pywikibot.Category(site, category)
+        pages = list(cat.articles(namespaces=[0]))
         for page in pages:
             process_page(page.title())
+
+if __name__ == "__main__":
+    main()
