@@ -4,6 +4,7 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 import mwparserfromhell
+from pywikibot.exceptions import OtherPageSaveError
 
 # ====================
 # Utility Functions
@@ -51,7 +52,7 @@ def remove_cleanup_templates(text):
 def log_edit(title):
     """Append a log entry to the user's bot log subpage."""
     site = pywikibot.Site()
-    log_page = pywikibot.Page(site, "User:Chi/Bot log")  # Update if using a different name
+    log_page = pywikibot.Page(site, "User:Chi/Bot log")  # Adjust if needed
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     log_entry = f"* [[{title}]] – replaced bare URLs – {timestamp}\n"
 
@@ -82,9 +83,12 @@ def process_page(title):
 
     if original_text != updated_text:
         page.text = updated_text
-        page.save(summary="Bot: Replaced bare URLs with cite web templates and removed cleanup template")
-        print(f"✅ Edited page: {title}")
-        log_edit(title)
+        try:
+            page.save(summary="Bot: Replaced bare URLs with cite web templates and removed cleanup template")
+            print(f"✅ Edited page: {title}")
+            log_edit(title)
+        except OtherPageSaveError as e:
+            print(f"⚠️ Skipped page '{title}' – bot not allowed to edit ({{nobots}}, {{in use}}, etc.):\n{e}")
     else:
         print(f"ℹ️ No changes made to: {title}")
 
