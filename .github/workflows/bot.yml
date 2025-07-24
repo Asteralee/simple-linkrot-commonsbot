@@ -1,30 +1,32 @@
-name: Run TestWiki Bot
+name: Run LinkRot Bot
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: '0 12 * * 4'  # Every Thursday at 12:00 UTC
+  workflow_dispatch:      # Allow manual trigger from GitHub
 
 jobs:
-  run:
+  run-bot:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
 
-      - name: Install dependencies
-        run: |
-          pip install pywikibot requests beautifulsoup4 mwparserfromhell
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pywikibot
 
-      - name: Set up Pywikibot password config
-        run: |
-          mkdir -p ~/.pywikibot
-          echo '("wikipedia", "test", "${{ secrets.WIKI_USERNAME }}", "${{ secrets.WIKI_PASSWORD }}")' > ~/.pywikibot/user-password.py
+    - name: Configure Pywikibot login
+      run: |
+        echo "usernames['wikipedia']['test'] = 'AsteraBot'" > user-config.py
+        echo "password_file = [('AsteraBot', '${{ secrets.BOT_PASSWORD }}')]" > user-password.py
 
-      - name: Run the bot
-        run: python bot.py
+    - name: Run the bot
+      run: python bot.py
