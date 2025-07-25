@@ -1,124 +1,101 @@
 import pywikibot
+from pywikibot import pagegenerators
+import hashlib
 import re
-from datetime import datetime
+import time
+import datetime
 import requests
 from bs4 import BeautifulSoup
-import mwparserfromhell
-from pywikibot.exceptions import OtherPageSaveError
 
-# =========================
-# Config
-# =========================
-
-# Set to False later
-TEST_MODE = True
-TEST_PAGES = ["User:AsteraBot/sandbox"]  
-
-# =========================
-# Utility Functions
-# =========================
-
-def fetch_title(url):
-    try:
-        headers = {'User-Agent': 'TestWikiBot/1.0'}
-        response = requests.get(url, timeout=10, headers=headers)
-        soup = BeautifulSoup(response.text, "html.parser")
-        return soup.title.string.strip() if soup.title else "No title"
-    except Exception as e:
-        print(f"Could not fetch title for {url}: {e}")
-        return "No title"
-
-def detect_cite_template(url):
-    """Return 'cite news' if the domain looks newsy, otherwise 'cite web'."""
-    news_domains = ["nytimes", "bbc", "cnn", "reuters", "apnews", "nbcnews", "washingtonpost", "foxnews", "theguardian"]
-    for domain in news_domains:
-        if domain in url:
-            return "cite news"
-    return "cite web"
-
-def replace_bare_urls(text):
-    updated = text
-    seen = set()
-
-    pattern = re.compile(r'(<ref[^>]*>)?\s*(https?://[^\s\[\]<>"]+)\s*(</ref>)?', re.IGNORECASE)
-
-    def replacer(match):
-        pre = match.group(1) or ''
-        url = match.group(2)
-        post = match.group(3) or ''
-
-        if url in seen:
-            return match.group(0)
-        seen.add(url)
-
-        title = fetch_title(url)
-        template = detect_cite_template(url)
-        cite = f"{{{{{template} |url={url} |title={title} |access-date={datetime.utcnow().date()}}}}}"
-        return f"{pre}{cite}{post}"
-
-    updated = re.sub(pattern, replacer, updated)
-    return updated
-
-def remove_cleanup_templates(text):
-    return re.sub(r'\{\{\s*Cleanup bare URLs[^}]*\}\}', '', text, flags=re.IGNORECASE)
-
-def log_edit(title):
-    site = pywikibot.Site()
+def log_to_userpage(site, title, summary, diff_id):
     log_page = pywikibot.Page(site, "User:AsteraBot/log")
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    log_entry = f"* [[{title}]] – replaced bare URLs – {timestamp}\n"
-
+    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    entry = f"* {timestamp} – [[{title}]] – {summary} – [[Special:Diff/{diff_id}|diff]]\n"
     try:
-        current_text = log_page.text
+        txt = log_page.get()
     except pywikibot.NoPage:
-        current_text = ""
+        txt = "== Log ==\n"
+    log_page.text = txt + entry
+    log_page.save(summary=f"Logging edit to {title}")
 
-    log_page.text = current_text + log_entry
-    log_page.save(summary=f"Bot log: added entry for [[{title}]]")
+def rename_duplicate_refs(text):
+    pattern = r"<ref>(.*?)</ref>"
+    refs = re.findall(pattern, flags=re.DOTALL, string=text)
+    changes = False
+    used = {}
 
-# =========================
-# Page Processing
-# =========================
+    for content in set(refs):
+        count = refs.count(content)
+        if count > 1:
+            h = hashlib.md5(content.strip().encode()).hexdigest()[:6]
+            used[content] = h
 
-def process_page(title):
-    site = pywikibot.Site()
-    page = pywikibot.Page(site, title)
+    if not used:
+        return text, False
 
-    if not page.exists():
-        print(f"❌ Page {title} does not exist.")
+    for old, h in used.items():
+        first = f'<ref name="ref{h}">{old}</ref>'
+        replacement = f'<ref name="ref{h}" />'
+        text = text.replace(f"<ref>{old}</ref>", first, 1)
+        text = text.replace(f"<ref>{old}</ref>", replacement)
+        changes = True
+
+    return text, changes
+
+def cite_web_from_url(url):
+    try:
+        resp = requests.get(url, timeout=10, headers={"User-Agent": "SimpleJanitorBot"})
+        resp.raise_for_status()
+    except Exception:
+        return None
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    title = soup.title.string.strip() if soup.title else url
+    domain = requests.utils.urlparse(url).hostname or ''
+    access_date = datetime.datetime.utcnow().strftime("%B %d, %Y")
+    citation = f'{{{{cite web|url={url}|title={title}|work={domain}|access-date={access_date}}}}}'
+    return citation
+
+def replace_bare_refs(text):
+    changed = False
+    pattern = r"<ref>(https?://[^\s<]+)</ref>"
+    matches = re.findall(pattern, text)
+    for url in matches:
+        cite = cite_web_from_url(url)
+        if cite:
+            text = text.replace(f"<ref>{url}</ref>", f"<ref>{cite}</ref>")
+            changed = True
+            time.sleep(5)
+    return text, changed
+
+def process_page(page, site):
+    original = page.text
+    text = original
+    refs_renamed = False
+    bare_fixed = False
+
+    if page.title() != "User:AsteraBot/sandbox":
         return
 
-    original_text = page.text
-    updated_text = replace_bare_urls(original_text)
-    updated_text = remove_cleanup_templates(updated_text)
+    text, refs_renamed = rename_duplicate_refs(text)
+    text, bare_fixed = replace_bare_refs(text)
 
-    if original_text != updated_text:
-        page.text = updated_text
-        try:
-            page.save(summary="Bot: Replaced bare URLs with citation templates and removed cleanup template")
-            print(f"✅ Edited page: {title}")
-            log_edit(title)
-        except OtherPageSaveError as e:
-            print(f"⚠️ Skipped page '{title}' – bot not allowed to edit ({{nobots}}, {{in use}}, etc.):\n{e}")
-    else:
-        print(f"ℹ️ No changes made to: {title}")
-
-# =========================
-# Main Bot Runner
-# =========================
+    if text != original:
+        actions = []
+        if refs_renamed:
+            actions.append("named duplicate references")
+        if bare_fixed:
+            actions.append("converted bare refs to cite web")
+        summary = "Bot: " + "; ".join(actions)
+        page.text = text
+        page.save(summary=summary)
+        diff = page.latest_revision_id
+        log_to_userpage(site, page.title(), summary, diff)
+        print(f"Processed {page.title()}: {summary}")
 
 def main():
-    if TEST_MODE:
-        print("Running in TEST MODE with hardcoded pages...")
-        for title in TEST_PAGES:
-            process_page(title)
-    else:
-        category = "Category:All articles with bare URLs for citations"
-        site = pywikibot.Site()
-        cat = pywikibot.Category(site, category)
-        pages = list(cat.articles(namespaces=[0]))
-        for page in pages:
-            process_page(page.title())
+    site = pywikibot.Site('test', 'wikipedia')
+    sandbox = pywikibot.Page(site, "User:AsteraBot/sandbox")
+    process_page(sandbox, site)
 
 if __name__ == "__main__":
     main()
