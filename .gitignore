@@ -1,1 +1,19 @@
-user-password.py
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.env.*
+
+# Pywikibot config/cache
+user-config.py
+*.passwd
+*.cookies
+*.lwp
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
