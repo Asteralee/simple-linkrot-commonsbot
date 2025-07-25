@@ -1,31 +1,32 @@
 name: Run SimpleJanitorBot
 
 on:
+  workflow_dispatch:  # Manual trigger
   schedule:
     - cron: '30 21 * * 4'  # Every Thursday at 21:30 UTC
-  workflow_dispatch:
 
 jobs:
-  run:
+  run-bot:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.x'
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
 
-    - name: Install dependencies
-      run: pip install pywikibot requests beautifulsoup4
+      - name: Install dependencies
+        run: |
+          pip install pywikibot requests beautifulsoup4
 
-    - name: Create user-config.py
-      run: |
-        echo "family = 'wikipedia'" > user-config.py
-        echo "mylang = 'test'" >> user-config.py
-        echo "usernames['wikipedia']['test'] = 'AsteraBot'" >> user-config.py
+      - name: Create user-config.py
+        run: |
+          echo "family = 'wikipedia'" > user-config.py
+          echo "mylang = 'test'" >> user-config.py
+          echo "usernames['wikipedia']['test'] = 'AsteraBot'" >> user-config.py
 
-    - name: Run bot
-      run: python simple_janitor_bot.py
+      - name: Run the bot
+        run: python simple_janitor_bot.py
