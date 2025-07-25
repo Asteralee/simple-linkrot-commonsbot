@@ -1,4 +1,4 @@
-name: Run SimpleJanitorBot
+name: Run AsteraBot
 
 on:
   schedule:
