@@ -1,4 +1,4 @@
-name: Run SimpleJanitorBot
+name: Run AsteraBot
 
 on:
   workflow_dispatch:  # Manual trigger
@@ -29,4 +29,4 @@ jobs:
           echo "usernames['wikipedia']['test'] = 'AsteraBot'" >> user-config.py
 
       - name: Run the bot
-        run: python simple_janitor_bot.py
+        run: python bot.py
